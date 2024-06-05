@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type Response struct {
@@ -30,6 +31,7 @@ func main() {
 
 func queryTaskHandler(w http.ResponseWriter, r *http.Request) {
 	taskId := r.URL.Query().Get("taskId")
+	sync := r.URL.Query().Get("sync")
 
 	// 从请求头获取授权码
 	authorization := r.Header.Get("Authorization")
@@ -50,11 +52,37 @@ func queryTaskHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+	var response map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
 
+	if sync == "1" {
+		// {"data":{"output":{},"result":{},"progress":6,"status":"running","task_id":"40cf0f1a-08d0-42fd-87b3-488da51f7e88","type":"image_to_model","create_time":1717602310,"input":{}},"code":0}
+		// 判断status是否为running
+		if err != nil {
+			println("queryTaskHandler: Failed to parse response body")
+			http.Error(w, "Failed to parse response body", http.StatusInternalServerError)
+			return
+		}
+		data, ok := response["data"].(map[string]interface{})
+		if !ok {
+			println("queryTaskHandler: Failed to parse response body cannot find data")
+			http.Error(w, "Failed to parse response body", http.StatusInternalServerError)
+			return
+		}
+		if data["status"] == "running" {
+			//延迟1秒
+			time.Sleep(2 * time.Second)
+			queryTaskHandler(w, r)
+			return
+		}
+
+	}
 	// 将目标API的响应返回给前端
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	// 把response返回前端
+
+	json.NewEncoder(w).Encode(response)
 }
 
 func textToModelHandler(w http.ResponseWriter, r *http.Request) {
@@ -104,31 +132,21 @@ func textToModelHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func imageToModelHandler(w http.ResponseWriter, r *http.Request) {
+	fileToken := r.URL.Query().Get("file_token")
 
 	// 从请求头获取授权码
 	authorization := r.Header.Get("Authorization")
-
-	// 读取请求体内容
-	var requestBody map[string]interface{}
-	err := json.NewDecoder(r.Body).Decode(&requestBody)
-	if err != nil {
-		http.Error(w, "Failed to parse request body", http.StatusBadRequest)
-		return
-	}
-
-	// 设置参数 type 为 image_to_model
-	requestBody["type"] = "image_to_model"
-
-	// 转换回 JSON 格式
-	modifiedBody, err := json.Marshal(requestBody)
-	if err != nil {
-		http.Error(w, "Failed to encode modified request body", http.StatusInternalServerError)
-		return
-	}
+	jsonStr := fmt.Sprintf(`{
+		"type": "image_to_model",
+		"file": {
+			"type": "png",
+			"file_token": "%s"
+		}
+	}`, fileToken)
 
 	// 转发请求到目标API
 	apiURL := "https://api.tripo3d.ai/v2/openapi/task"
-	req, err := http.NewRequest("POST", apiURL, strings.NewReader(string(modifiedBody)))
+	req, err := http.NewRequest("POST", apiURL, strings.NewReader(jsonStr))
 	if err != nil {
 		http.Error(w, "Failed to create request", http.StatusInternalServerError)
 		return
