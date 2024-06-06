@@ -17,6 +17,13 @@ type KeyManager struct {
 	index     int
 }
 
+type Key struct {
+	ID    int
+	Key   string
+	Memo  string
+	Usage int
+}
+
 func NewKeyManager(dbPath string) (*KeyManager, error) {
 	db, err := sql.Open("sqlite", dbPath) // 使用 "sqlite" 驱动
 	if err != nil {
@@ -34,7 +41,7 @@ func NewKeyManager(dbPath string) (*KeyManager, error) {
 		return nil, err
 	}
 
-	err = km.loadKeys()
+	_, err = km.loadKeys()
 	if err != nil {
 		return nil, err
 	}
@@ -52,26 +59,31 @@ func (km *KeyManager) initDB() error {
 	return err
 }
 
-func (km *KeyManager) loadKeys() error {
-	rows, err := km.db.Query("SELECT key FROM keys")
+// 从数据库查询所有的数据，并且返回 Key数组
+
+func (km *KeyManager) loadKeys() ([]Key, error) {
+	rows, err := km.db.Query("SELECT id,key,memo,usage FROM keys")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer rows.Close()
 
 	var keys []string
+	var keyData []Key
 	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			return err
+		var k Key
+		err = rows.Scan(&k.ID, &k.Key, &k.Memo, &k.Usage)
+		if err != nil {
+			return nil, err
 		}
-		keys = append(keys, key)
+		keys = append(keys, k.Key)
+		keyData = append(keyData, k)
 	}
 
 	km.mu.Lock()
 	defer km.mu.Unlock()
 	km.validKeys = keys
-	return nil
+	return keyData, nil
 }
 
 func (km *KeyManager) CreateKey(memo, key string) error {
@@ -81,7 +93,8 @@ func (km *KeyManager) CreateKey(memo, key string) error {
 		return err
 	}
 
-	return km.loadKeys()
+	_, err2 := km.loadKeys()
+	return err2
 }
 
 func (km *KeyManager) GetAllKeys() ([]string, error) {
@@ -97,7 +110,8 @@ func (km *KeyManager) DeleteKey(key string) error {
 		return err
 	}
 
-	return km.loadKeys()
+	_, err2 := km.loadKeys()
+	return err2
 }
 
 func (km *KeyManager) AllocateKey() (string, error) {
@@ -132,7 +146,6 @@ func (km *KeyManager) CreateKeyHandler(w http.ResponseWriter, r *http.Request) {
 		memo := r.FormValue("memo")
 		err := km.CreateKey(memo, key)
 		if err != nil {
-			fmt.Print("床啊进错误", err)
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
@@ -172,7 +185,7 @@ func (km *KeyManager) RemoveKeyHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "无效操作", http.StatusInternalServerError)
 }
 func (km *KeyManager) ListKeysHandler(w http.ResponseWriter, r *http.Request) {
-	keys, err := km.GetAllKeys()
+	keyList, err := km.loadKeys()
 	if err != nil {
 		http.Error(w, "Failed to get keys", http.StatusInternalServerError)
 		return
@@ -217,16 +230,6 @@ func (km *KeyManager) ListKeysHandler(w http.ResponseWriter, r *http.Request) {
 		</html>
 	`
 
-	type Key struct {
-		ID    int
-		Key   string
-		Memo  string
-		Usage int
-	}
-	var keyList []Key
-	for _, key := range keys {
-		keyList = append(keyList, Key{Key: key})
-	}
 	t := template.Must(template.New("keys").Parse(tmpl))
 	t.Execute(w, keyList)
 }

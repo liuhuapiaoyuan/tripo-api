@@ -150,10 +150,8 @@ func textToModelHandler(w http.ResponseWriter, r *http.Request) {
 	// 调用成功 加1
 	// 判断响应状态是否是200
 	if resp.StatusCode == http.StatusOK {
-		km.IncreaseUsage(authorization, 30)
-		fmt.Print("调用成功,z")
+		km.IncreaseUsage(authorization, 20)
 	}
-	fmt.Print("调用失败,z")
 	// 将目标API的响应返回给前端
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
@@ -196,8 +194,9 @@ func imageToModelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// 成功加20
-	km.IncreaseUsage(authorization, 20)
+	if resp.StatusCode == http.StatusOK {
+		km.IncreaseUsage(authorization, 30)
+	}
 	// 将目标API的响应返回给前端
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
