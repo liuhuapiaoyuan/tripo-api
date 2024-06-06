@@ -32,6 +32,8 @@ func main() {
 	http.HandleFunc("/task/image_to_model", imageToModelHandler)
 	http.HandleFunc("/upload/sync_url", syncURLHandler)
 
+	// 增加接口，分配KEY
+	http.HandleFunc("/allocate_key", km.AllocateKeyHandler)
 	http.HandleFunc("/create_key", km.CreateKeyHandler)
 	http.HandleFunc("/remove_key", km.RemoveKeyHandler)
 	http.HandleFunc("/", km.ListKeysHandler)
@@ -49,12 +51,7 @@ func queryTaskHandler(w http.ResponseWriter, r *http.Request) {
 	sync := r.URL.Query().Get("sync")
 
 	// 从请求头获取授权码
-	authorization, err := km.AllocateKey()
-	if err != nil {
-		fmt.Printf("无法分配到有效keyto allocate key: %s\n", err)
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
-		return
-	}
+	authorization := r.Header.Get("Authorization")
 	// 转发请求到目标API
 	apiURL := fmt.Sprintf("https://api.tripo3d.ai/v2/openapi/task/%s", taskId)
 	req, err := http.NewRequest("GET", apiURL, nil)
@@ -96,25 +93,19 @@ func queryTaskHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 	}
-	// 将目标API的响应返回给前端
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
-	// 把response返回前端
-
+	// 把计算结果 增加一个字段   Authorization
+	response["Authorization"] = authorization
 	json.NewEncoder(w).Encode(response)
 }
 
 func textToModelHandler(w http.ResponseWriter, r *http.Request) {
 	// 从请求头获取授权码
-	authorization, err := km.AllocateKey()
-	if err != nil {
-		fmt.Printf("无法分配到有效keyto allocate key: %s\n", err)
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
-		return
-	}
+	authorization := r.Header.Get("Authorization")
 	// 读取请求体内容
 	var requestBody map[string]interface{}
-	err = json.NewDecoder(r.Body).Decode(&requestBody)
+	err := json.NewDecoder(r.Body).Decode(&requestBody)
 	if err != nil {
 		http.Error(w, "Failed to parse request body", http.StatusBadRequest)
 		return
@@ -155,19 +146,24 @@ func textToModelHandler(w http.ResponseWriter, r *http.Request) {
 	// 将目标API的响应返回给前端
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+
+	// 把计算结果 增加一个字段   Authorization
+
+	var response map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		http.Error(w, "Failed to parse response body", http.StatusInternalServerError)
+		return
+	}
+	response["Authorization"] = authorization
+	json.NewEncoder(w).Encode(response)
 }
 
 func imageToModelHandler(w http.ResponseWriter, r *http.Request) {
 	fileToken := r.URL.Query().Get("file_token")
 
 	// 从请求头获取授权码
-	authorization, err := km.AllocateKey()
-	if err != nil {
-		fmt.Printf("无法分配到有效keyto allocate key: %s\n", err)
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
-		return
-	}
+	authorization := r.Header.Get("Authorization")
 	jsonStr := fmt.Sprintf(`{
 		"type": "image_to_model",
 		"file": {
@@ -200,17 +196,19 @@ func imageToModelHandler(w http.ResponseWriter, r *http.Request) {
 	// 将目标API的响应返回给前端
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
-
+	var response map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		http.Error(w, "Failed to parse response body", http.StatusInternalServerError)
+		return
+	}
+	response["Authorization"] = authorization
+	json.NewEncoder(w).Encode(response)
 }
 
 func syncURLHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Query().Get("url")
 	Authorization := r.Header.Get("Authorization")
-	if url == "" {
-		http.Error(w, "url is required", http.StatusBadRequest)
-		return
-	}
 
 	resp, err := http.Get(url)
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -269,5 +267,12 @@ func syncURLHandler(w http.ResponseWriter, r *http.Request) {
 	// 将目标API的响应返回给前端
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	var response map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		http.Error(w, "Failed to parse response body", http.StatusInternalServerError)
+		return
+	}
+	response["Authorization"] = Authorization
+	json.NewEncoder(w).Encode(response)
 }

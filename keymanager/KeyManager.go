@@ -138,6 +138,17 @@ func (km *KeyManager) IncreaseUsage(key string, usage int) (string, error) {
 	}
 	return key, nil
 }
+func (km *KeyManager) AllocateKeyHandler(w http.ResponseWriter, r *http.Request) {
+	key, err := km.AllocateKey()
+	if err != nil {
+		http.Error(w, "No key available", http.StatusServiceUnavailable)
+		return
+	}
+	// 返回JSON，包含  code=0，key
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(fmt.Sprintf(`{"code":0,"key":"%s"}`, key)))
+
+}
 
 func (km *KeyManager) CreateKeyHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
