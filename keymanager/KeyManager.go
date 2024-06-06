@@ -132,6 +132,10 @@ func (km *KeyManager) AllocateKey() (string, error) {
 
 // 增加使用数量
 func (km *KeyManager) IncreaseUsage(key string, usage int) (string, error) {
+	// key 自动剔除 Bearer 前缀
+	if len(key) > 6 && key[:7] == "Bearer " {
+		key = key[7:]
+	}
 	_, err := km.db.Exec("UPDATE keys SET usage = usage + ? WHERE key = ?", usage, key)
 	if err != nil {
 		return "", err

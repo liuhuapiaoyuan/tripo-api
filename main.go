@@ -21,7 +21,7 @@ var km *keymanager.KeyManager // 全局变量
 // 主函数
 func main() {
 	var err2 error
-	km, err2 = keymanager.NewKeyManager("keys.db")
+	km, err2 = keymanager.NewKeyManager("db/keys.db")
 	if err2 != nil {
 		fmt.Printf("项目初始化数据库失败了: %s\n", err2)
 		return
@@ -156,6 +156,9 @@ func textToModelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response["Authorization"] = authorization
+	if resp.StatusCode == http.StatusOK {
+		km.IncreaseUsage(authorization, 20)
+	}
 	json.NewEncoder(w).Encode(response)
 }
 
@@ -202,6 +205,7 @@ func imageToModelHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to parse response body", http.StatusInternalServerError)
 		return
 	}
+
 	response["Authorization"] = authorization
 	json.NewEncoder(w).Encode(response)
 }

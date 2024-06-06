@@ -3,5 +3,7 @@ version: '3.8'
 services:
   tripo-api-client:
     image: liuhuapiaoyuan/tripo-api-client
+    volumes:
+      -./client:/usr/src/app/client
     ports:
       - "8000:8000"
