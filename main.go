@@ -9,20 +9,35 @@ import (
 	"os"
 	"strings"
 	"time"
+	"tripo-api/keymanager" // 替换为你的模块名称
 )
 
 type Response struct {
 	Message string `json:"message"`
 }
 
+var km *keymanager.KeyManager // 全局变量
+
 // 主函数
 func main() {
+	var err2 error
+	km, err2 = keymanager.NewKeyManager("keys.db")
+	if err2 != nil {
+		fmt.Printf("项目初始化数据库失败了: %s\n", err2)
+		return
+	}
+
 	http.HandleFunc("/task/query", queryTaskHandler)
 	http.HandleFunc("/task/text_to_model", textToModelHandler)
 	http.HandleFunc("/task/image_to_model", imageToModelHandler)
 	http.HandleFunc("/upload/sync_url", syncURLHandler)
 
+	http.HandleFunc("/create_key", km.CreateKeyHandler)
+	http.HandleFunc("/remove_key", km.RemoveKeyHandler)
+	http.HandleFunc("/", km.ListKeysHandler)
+
 	fmt.Println("Server is listening on port 8000...")
+	fmt.Println("访问： http://localhost:8000/")
 	err := http.ListenAndServe(":8000", nil)
 	if err != nil {
 		fmt.Printf("Error starting server: %s\n", err)
@@ -34,8 +49,12 @@ func queryTaskHandler(w http.ResponseWriter, r *http.Request) {
 	sync := r.URL.Query().Get("sync")
 
 	// 从请求头获取授权码
-	authorization := r.Header.Get("Authorization")
-
+	authorization, err := km.AllocateKey()
+	if err != nil {
+		fmt.Printf("无法分配到有效keyto allocate key: %s\n", err)
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
 	// 转发请求到目标API
 	apiURL := fmt.Sprintf("https://api.tripo3d.ai/v2/openapi/task/%s", taskId)
 	req, err := http.NewRequest("GET", apiURL, nil)
@@ -87,11 +106,15 @@ func queryTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 func textToModelHandler(w http.ResponseWriter, r *http.Request) {
 	// 从请求头获取授权码
-	authorization := r.Header.Get("Authorization")
-
+	authorization, err := km.AllocateKey()
+	if err != nil {
+		fmt.Printf("无法分配到有效keyto allocate key: %s\n", err)
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
 	// 读取请求体内容
 	var requestBody map[string]interface{}
-	err := json.NewDecoder(r.Body).Decode(&requestBody)
+	err = json.NewDecoder(r.Body).Decode(&requestBody)
 	if err != nil {
 		http.Error(w, "Failed to parse request body", http.StatusBadRequest)
 		return
@@ -124,7 +147,13 @@ func textToModelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-
+	// 调用成功 加1
+	// 判断响应状态是否是200
+	if resp.StatusCode == http.StatusOK {
+		km.IncreaseUsage(authorization, 30)
+		fmt.Print("调用成功,z")
+	}
+	fmt.Print("调用失败,z")
 	// 将目标API的响应返回给前端
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
@@ -135,7 +164,12 @@ func imageToModelHandler(w http.ResponseWriter, r *http.Request) {
 	fileToken := r.URL.Query().Get("file_token")
 
 	// 从请求头获取授权码
-	authorization := r.Header.Get("Authorization")
+	authorization, err := km.AllocateKey()
+	if err != nil {
+		fmt.Printf("无法分配到有效keyto allocate key: %s\n", err)
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
 	jsonStr := fmt.Sprintf(`{
 		"type": "image_to_model",
 		"file": {
@@ -162,6 +196,8 @@ func imageToModelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
+	// 成功加20
+	km.IncreaseUsage(authorization, 20)
 	// 将目标API的响应返回给前端
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)

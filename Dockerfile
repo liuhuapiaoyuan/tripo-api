@@ -6,6 +6,7 @@ WORKDIR /app
 
 # 复制go.mod和go.sum文件
 COPY go.mod  ./
+COPY go.sum  ./
 
 # 下载依赖
 RUN go mod download
