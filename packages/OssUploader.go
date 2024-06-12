@@ -3,7 +3,6 @@ package packages
 import (
 	"net/http"
 
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -15,6 +14,14 @@ import (
 type OssUploader struct {
 	// TODO: implement OssUploader
 }
+type RequestBody struct {
+	Bucket    string `json:"bucket"`
+	AccessKey string `json:"accessKey"`
+	SecretKey string `json:"secretKey"`
+	Region    string `json:"region"`
+	CDN       string `json:"cdn"`
+	TargetUrl string `json:"url"`
+}
 
 // 1. 读取oss的配置
 func NewOssUploader() *OssUploader {
@@ -24,12 +31,25 @@ func NewOssUploader() *OssUploader {
 
 func (km *OssUploader) Sync_url(w http.ResponseWriter, r *http.Request) {
 	// 获取参数 AccessKey，SecretKey和Bucket
-	bucket := r.FormValue("bucket")
-	accessKey := r.FormValue("accessKey")
-	secretKey := r.FormValue("secretKey")
-	region := r.FormValue("region")
-	cdn := r.FormValue("cdn")
-	targetUrl := r.FormValue("url")
+	var requestBody RequestBody
+
+	// 读取请求体并解析 JSON 数据
+	err := json.NewDecoder(r.Body).Decode(&requestBody)
+	if err != nil {
+		// 处理解析错误
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(fmt.Sprintf(`{"code": 1,"msg":"parse request body fail", "data": {"err": "%s"}}`, err.Error())))
+		return
+	}
+
+	// 使用解析后的参数
+	bucket := requestBody.Bucket
+	accessKey := requestBody.AccessKey
+	secretKey := requestBody.SecretKey
+	region := requestBody.Region
+	cdn := requestBody.CDN
+	targetUrl := requestBody.TargetUrl
+
 	pathName, err := fetchPathnameFromURL(targetUrl)
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
@@ -83,58 +103,10 @@ type UploadRequest struct {
 	Key    string `json:"key"`
 }
 
-func fetchHostFromURL(rawURL string) (string, error) {
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
-	}
-	return parsedURL.Host, nil
-}
 func fetchPathnameFromURL(rawURL string) (string, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		return "", err
 	}
 	return parsedURL.Path, nil
-}
-
-// 上传完enjain
-func uploadFile(accessToken string, uploadURL, region string, bucket string, key string) error {
-	host, err := fetchHostFromURL(uploadURL)
-	if err != nil {
-		return fmt.Errorf("failed to parse URL: %v", err)
-	}
-
-	requestBody := UploadRequest{
-		URL:    uploadURL,
-		Host:   host,
-		Bucket: bucket,
-		Key:    key,
-	}
-
-	jsonBody, err := json.Marshal(requestBody)
-	if err != nil {
-		return fmt.Errorf("failed to marshal JSON: %v", err)
-	}
-
-	client := &http.Client{}
-	req, err := http.NewRequest("POST", fmt.Sprintf("https://api-%s.qiniuapi.com/sisyphus/fetch", region), bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %v", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("UpToken %s", accessToken))
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad response status: %s", resp.Status)
-	}
-
-	return nil
 }
