@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"tripo-api/keymanager" // 替换为你的模块名称
+	"tripo-api/packages"
 )
 
 type Response struct {
@@ -20,6 +21,9 @@ var km *keymanager.KeyManager // 全局变量
 
 // 主函数
 func main() {
+
+	ossUploader := packages.NewOssUploader()
+
 	var err2 error
 	km, err2 = keymanager.NewKeyManager("db/keys.db")
 	if err2 != nil {
@@ -31,6 +35,7 @@ func main() {
 	http.HandleFunc("/task/text_to_model", textToModelHandler)
 	http.HandleFunc("/task/image_to_model", imageToModelHandler)
 	http.HandleFunc("/upload/sync_url", syncURLHandler)
+	http.HandleFunc("/oss/sync_url", ossUploader.Sync_url)
 
 	// 增加接口，分配KEY
 	http.HandleFunc("/allocate_key", km.AllocateKeyHandler)
